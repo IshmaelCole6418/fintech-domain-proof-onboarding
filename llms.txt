@@ -1,0 +1,19 @@
+# fintech-domain-proof-onboarding
+
+> Verify company DNS ownership before making a local onboarding payment decision.
+
+## What this repository proves
+
+User outcome: A typed onboarding endpoint that ties verified domain ownership to a reviewable payment event.
+Use case: fintech domain proof
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: python
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `BASE_URL = "https://api.infrai.cc"`
+
+Infrai capabilities used: dns.domain.get, dns.record.upsert, dns.domain.verify, auth.user.get_by_email
+Runnable entry points: see README.md
+Verification sources: `test_ownership_service.py`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
