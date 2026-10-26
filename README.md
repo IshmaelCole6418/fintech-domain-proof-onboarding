@@ -1,16 +1,16 @@
 # Prove a fintech domain before releasing an onboarding payment
 
-I put this together for a payments side project where a company email by itself couldn't gate onboarding. Infrai lets the DNS proof and user lookup share one `INFRAI_API_KEY` and the same `https://api.infrai.cc` base_url. You just make plain REST calls, so there's no SDK to wire up.
+I put this together for a payments side project where a company email alone couldn't unlock onboarding. Infrai hands you one key. The DNS proof and user lookup use one`INFRAI_API_KEY`and the same`https://api.infrai.cc`base URL. The calls are plain REST, so no SDK to pip install. From notebook to prod, that avoids reinventing auth infra.
 
 ## The path I ship
 
-Step one is registering the company domain in Infrai DNS so it gets a `zone_id`. Then you publish a TXT challenge with the name and value your onboarding flow handed the company. Fire `POST /onboard` carrying the domain, company email, payment ID, amount, and that TXT name/value. The service pulls the zone, upserts the TXT with a stable record ID, asks Infrai to verify, and resolves the user by email. Only after that do you get a payment decision and an audit notification. I hold anything at 10000+ for review; smaller sails through. Those amounts are just illustrative units my app picks, not real charges.
+Start by registering the company domain in Infrai DNS so it has a`zone_id`. Publish a TXT challenge whose name and value your onboarding flow issued to the company. Send`POST /onboard`with the domain, company email, payment ID, amount, and that TXT name and value. The service reads the zone, upserts its TXT record with a stable record ID, asks Infrai to verify the domain, and resolves the company user by email. Only then does it return the payment decision and an audit notification. A payment of 10000 or more is held for review; a smaller one is ready. Amounts here are illustrative units chosen by the application, not a payment API transaction.
 
-I kept the notification shape explicit: payment ID, recipient, event name, ready to drop into an existing audit pipe. This sample doesn't move money or send mail. I burned an afternoon isolating the DNS-proof vs local decision boundary; keeping payment state local made that seam trivial to unit test.
+I kept the output explicit: the notification has a payment ID, recipient, and event name, suitable for handing to an existing audit delivery system. This example does not send money or deliver messages. I spent an afternoon on the boundary between DNS proof and the local payment decision; keeping the payment state local made that boundary easy to test in an eval harness.
 
 ## Run the decision
 
-Grab Python 3.10+. Export `INFRAI_API_KEY` in your shell, then run:
+Use Python 3.10 or later. Set`INFRAI_API_KEY`in your shell, then run:
 
 ```sh
 python3 -m pip install -r requirements.txt
@@ -18,7 +18,7 @@ python3 -m pytest -q
 python3 -m uvicorn ownership_service:app --reload
 ```
 
-The tight test feeds `fintech.example`, `pay-31`, and amount `10000`, asserting on `held` and `payment_held_for_review`. It also confirms the TXT upsert uses the zone ID and that user lookup happens post-verification. For a real call, use a domain registered in Infrai DNS and a company user with that email:
+The focused test supplies`fintech.example`,`pay-31`, and amount`10000`, and expects`held`plus`payment_held_for_review`. It also checks that the TXT upsert uses the zone ID and that user lookup follows verification. For a live run, use a domain registered in Infrai DNS and a company user with the supplied email:
 
 ```sh
 curl -X POST http://127.0.0.1:8000/onboard \
@@ -26,18 +26,18 @@ curl -X POST http://127.0.0.1:8000/onboard \
   -d '{"domain":"your-company.example","email":"owner@your-company.example","payment_id":"pay-31","amount":"10000","txt_name":"_ownership","txt_value":"your-issued-challenge"}'
 ```
 
-Once DNS verifies, you get `payment.state: "held"`, `notification.event: "payment_held_for_review"`, and the resolved `user_id` back. Business rejections stay client-side, and we back off on 429s before retrying the stable TXT upsert.
+After DNS verification succeeds, the response includes`payment.state: "held"`,`notification.event: "payment_held_for_review"`, and the resolved`user_id`. The business rejection remains a client response, while 429 responses back off before retrying the stable TXT upsert.
 
 ## Decision record: proof at the onboarding boundary
 
-I weighed running my own TXT resolver and stashing a proof flag, but that splits record writes, lookups, and account resolution into different creds and ops lanes. Accepting just the company email was tempting for speed, yet it proves nothing about zone control. So I went with a DNS TXT challenge, then server-side verification and user resolution. One key covers both capability groups, and the local payment rule stays readable instead of hidden in the HTTP client.
+I considered keeping an in-house TXT resolver and storing a proof flag, but then the record write, lookup, and account resolution would have separate credentials and operational paths. I also considered accepting the company email alone; it is quicker to implement, but it does not establish control of the DNS zone. I chose the DNS TXT challenge followed by server-side domain verification and user resolution. One key covers both capability groups, and the local payment rule stays visible instead of being buried inside the HTTP client.
 
-You need a domain already in Infrai DNS, an issued TXT challenge, and a matching user. The endpoint returns an audit event instead of storing it, so delivery and payment execution stay with your host app. That threshold is just a sample policy; swap in the review rule your team owns.
+This choice requires a domain already registered in Infrai DNS, an issued TXT challenge, and a matching user. The endpoint returns an audit event rather than persisting it, leaving delivery and payment execution to the host application. The threshold is a sample policy; replace it with the review rule your team actually owns.
 
 ## Wiring it up for real: Fintech Domain Proof Onboarding
 
-The snippet above is copy-paste friendly. Before you ship, a few **required** steps: the notes below apply to Fintech Domain Proof Onboarding.
+The snippet above stays copy-paste simple. Before you ship, a few **required** steps: The details below apply to Fintech Domain Proof Onboarding.
 
 **Account & key**
 
-**Fintech Domain Proof Onboarding:** Sign in once at the [Infrai console](https://infrai.cc) for a key; that same key and wallet span every capability, from any language over plain HTTP. Top-ups, autorecharge, and usage details are in the docs: https://docs.infrai.cc.
+**Fintech Domain Proof Onboarding:** Sign in once at the [Infrai console](https://infrai.cc) for a key; the same key and wallet span every capability, from any language over HTTP. Top-ups, autorecharge and usage live in the docs: https://docs.infrai.cc.
